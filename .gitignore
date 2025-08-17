@@ -30,4 +30,4 @@ Thumbs.db
 
 # SonarQube specific
 .sonar/
-
+.scannerwork/

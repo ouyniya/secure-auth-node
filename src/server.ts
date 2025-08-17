@@ -9,6 +9,12 @@
 
 import express from 'express'
 
+/**
+ * Custom modules
+ */
+
+import config from './config/index.js';
+
 const app = express()
 
 // ปิด header X-Powered-By
@@ -18,7 +24,6 @@ app.get("/", (req, res) => {
   res.send("Hello Secure World!");
 });
 
-const PORT = 3000
-app.listen(PORT, () => {
-    console.log(`Server is running on port: ${PORT}`)
+app.listen(config.PORT, () => {
+    console.log(`Server is running on port: ${config.PORT}`)
 })
