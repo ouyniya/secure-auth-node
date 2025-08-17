@@ -1,0 +1,39 @@
+{
+  // Visit https://aka.ms/tsconfig to read more about this file
+  "compilerOptions": {
+    // File Layout
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "target": "es6",
+    "module": "ESNext",
+    "baseUrl": "./",
+    "removeComments": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    
+    // Recommended Options
+    "strict": true,
+
+    // ถ้าไม่ใช้ React → ไม่จำเป็น
+    // "jsx": "react-jsx", 
+
+    // บังคับให้ TypeScript คง ESM import/export ไว้ตามที่เขียนในไฟล์ .ts
+    "verbatimModuleSyntax": true,
+
+    // บังคับให้ ทุกไฟล์สามารถคอมไพล์แยกกัน ได้ 
+    // ช่วยให้ทำงานกับ Babel หรือ ts-node แบบ transpile-only ได้ปลอดภัย
+    "isolatedModules": true,
+
+    // บังคับให้ TypeScript เตือนถ้ามี import module ที่อาจมี side-effect แต่ไม่ได้ใช้งานตรง ๆ
+    // ช่วยให้ code cleaner และลด risk จากการ import module ที่ทำงานโดยไม่ตั้งใจ
+    "noUncheckedSideEffectImports": true,
+
+    // บังคับให้ TypeScript ตรวจจับ module type ของทุกไฟล์ แม้ว่าจะไม่มี export/import
+    // ป้องกันไฟล์ที่ไม่ใช่ module แต่ถูกเข้าใจผิดว่าเป็น module
+    "moduleDetection": "force",
+
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}

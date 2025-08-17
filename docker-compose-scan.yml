@@ -1,0 +1,11 @@
+services:
+  sonar-scanner:
+    image: sonarsource/sonar-scanner-cli
+    container_name: sonar-scanner
+    environment:
+      SONAR_HOST_URL: ${SONAR_HOST_URL}
+      SONAR_TOKEN: ${SONAR_TOKEN}
+    volumes:
+      - ./:/usr/src   # mount ทั้ง root
+    working_dir: /usr/src
+    entrypoint: sonar-scanner

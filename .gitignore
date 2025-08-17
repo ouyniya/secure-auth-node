@@ -1,0 +1,33 @@
+# Node dependencies
+node_modules/
+
+# Build outputs
+dist/
+coverage/
+.nyc_output/
+
+# Env & secret files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor & system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Optional lock files (ขึ้นอยู่กับทีมว่าจะใช้หรือไม่)
+# package-lock.json
+# yarn.lock
+
+# SonarQube specific
+.sonar/
+
