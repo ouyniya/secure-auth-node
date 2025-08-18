@@ -4,15 +4,14 @@
     // File Layout
     "rootDir": "./src",
     "outDir": "./dist",
-    "target": "es6",
+    "target": "ES2020",
     "module": "commonjs",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
     "baseUrl": "./",
     "removeComments": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-
-    // เพิ่ม types สำหรับ Jest
-    "types": ["node"],
 
     // Recommended Options
     "strict": true,

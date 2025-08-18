@@ -8,6 +8,7 @@
  */
 
 import express from 'express';
+import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -16,7 +17,6 @@ import helmet from 'helmet';
  * Custom modules
  */
 
-import config from './config/index';
 import limiter from './lib/express-rate-limits';
 
 /**
@@ -31,6 +31,14 @@ const app = express();
 
 // Remove header X-Powered-By
 app.disable('x-powered-by');
+
+dotenv.config(); // Load .env file variables
+
+const config = {
+  PORT: process.env.PORT ?? 3000,
+  NODE_ENV: process.env.NODE_ENV,
+  WHITELIST_ORIGINS: ['https://nysdev.com'],
+};
 
 // Configure CORS options
 const corsOptions: CorsOptions = {
@@ -70,15 +78,19 @@ app.use(helmet());
 // Apply rate limiting middleware to prevent excessive requests and enhance security
 app.use(limiter);
 
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello Secure World!' });
-});
+(async () => {
+  try {
+    app.get('/', (req, res) => {
+      res.json({ message: 'Hello Secure World!' });
+    });
+  } catch (error) {
+    console.log(`Failed to start the server`, error);
+
+    if (config.NODE_ENV === 'production') {
+      process.exit(1);
+    }
+  }
+})();
 
 // export app for unit testing
 export default app;
-
-if (process.env.JEST_WORKER_ID === undefined) {
-  app.listen(config.PORT, () => {
-    console.log(`Server is running on port: ${config.PORT}`);
-  });
-}

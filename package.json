@@ -2,20 +2,30 @@
   "name": "blog-api",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/server.js",
+  "main": "index.js",
   "scripts": {
-    "dev": "tsc && nodemon dist/server.js",
+    "build": "tsc",
+    "dev": "tsc && nodemon dist/index.js",
     "test": "jest --watchAll --no-cache",
+    "test:coverage": "jest --coverage",
     "scan": "docker-compose -f docker-compose-scan.yml run --rm sonar-scanner"
   },
-    "jest": {
+  "jest": {
     "preset": "ts-jest",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "collectCoverage": true,
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "json",
+      "lcov",
+      "text",
+      "clover"
+    ]
   },
   "keywords": [],
   "author": "",
   "license": "Apache-2.0",
-  "type": "module",
+  "type": "commonjs",
   "devDependencies": {
     "@types/cookie-parser": "^1.4.9",
     "@types/cors": "^2.8.19",
