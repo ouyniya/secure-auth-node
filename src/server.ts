@@ -18,6 +18,7 @@ import helmet from 'helmet';
  */
 
 import limiter from './lib/express-rate-limits';
+import { logger } from './lib/winston';
 
 /**
  * Router
@@ -60,7 +61,7 @@ const corsOptions: CorsOptions = {
         new Error(`CORS Error: ${origin} is not allowed by CORS`),
         false,
       );
-      console.log(`CORS Error: ${origin} is not allowed by CORS`);
+      logger.warn(`CORS Error: ${origin} is not allowed by CORS`);
     }
   },
 };

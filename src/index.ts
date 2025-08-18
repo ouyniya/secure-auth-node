@@ -1,6 +1,7 @@
 import app from './server';
 import config from './config/index';
 import prisma from './config/database';
+import { logger } from './lib/winston';
 
 /**
  * Immediately Invoked Function Expression (IIFE)
@@ -10,7 +11,7 @@ import prisma from './config/database';
   try {
     // connect database
     await prisma.$connect();
-    console.log('Database connected successfully!');
+    logger.info('Database connected successfully!');
 
     // Server is running ?
     if (
@@ -18,11 +19,11 @@ import prisma from './config/database';
       process.env.NODE_ENV !== 'production'
     ) {
       app.listen(config.PORT, () => {
-        console.log(`Server is running on port: ${config.PORT}`);
+        logger.info(`Server is running on port: ${config.PORT}`);
       });
     }
   } catch (error) {
-    console.log(`Failed to start the server`, error);
+    logger.error(`Failed to start the server`, error);
     await prisma.$disconnect();
 
     if (config.NODE_ENV === 'production') {
@@ -38,15 +39,15 @@ import prisma from './config/database';
  */
 const handleServerShutdown = async () => {
   try {
-    console.log('Shutting down gracefully...');
+    logger.info('Shutting down gracefully...');
 
     await prisma.$disconnect();
-    console.log('Database disconnected');
+    logger.info('Database disconnected');
 
-    console.log('Server SHUTDOWN');
+    logger.info('Server SHUTDOWN');
     process.exit(0);
   } catch (error) {
-    console.log('Error during server shutdown', error);
+    logger.error('Error during server shutdown', error);
     process.exit(1);
   }
 };
