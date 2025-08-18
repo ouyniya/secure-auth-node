@@ -5,22 +5,25 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "target": "es6",
-    "module": "ESNext",
+    "module": "commonjs",
     "baseUrl": "./",
     "removeComments": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    
+
+    // เพิ่ม types สำหรับ Jest
+    "types": ["node"],
+
     // Recommended Options
     "strict": true,
 
     // ถ้าไม่ใช้ React → ไม่จำเป็น
-    // "jsx": "react-jsx", 
+    // "jsx": "react-jsx",
 
     // บังคับให้ TypeScript คง ESM import/export ไว้ตามที่เขียนในไฟล์ .ts
-    "verbatimModuleSyntax": true,
+    // "verbatimModuleSyntax": true,
 
-    // บังคับให้ ทุกไฟล์สามารถคอมไพล์แยกกัน ได้ 
+    // บังคับให้ ทุกไฟล์สามารถคอมไพล์แยกกัน ได้
     // ช่วยให้ทำงานกับ Babel หรือ ts-node แบบ transpile-only ได้ปลอดภัย
     "isolatedModules": true,
 

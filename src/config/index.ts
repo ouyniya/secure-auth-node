@@ -12,7 +12,9 @@ import dotenv from 'dotenv';
 dotenv.config(); // Load .env file variables
 
 const config = {
-  PORT: process.env.PORT || 3000,
+  PORT: process.env.PORT ?? 3000,
+  NODE_ENV: process.env.NODE_ENV,
+  WHITELIST_ORIGINS: ['https://nysdev.com'],
 };
 
 export default config;
