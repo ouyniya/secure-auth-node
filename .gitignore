@@ -31,3 +31,5 @@ Thumbs.db
 # SonarQube specific
 .sonar/
 .scannerwork/
+
+/src/generated/prisma
