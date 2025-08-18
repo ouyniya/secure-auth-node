@@ -13,8 +13,248 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Core User Management
 model User {
-  id    Int    @id @default(autoincrement())
-  name  String
-  email String @unique
+  id                String             @id @default(cuid())
+  email             String             @unique
+  username          String             @unique
+  hashedPassword    String
+  isActive          Boolean            @default(true)
+  lastLogin         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  
+  // RBAC Relations
+  userRoles         UserRole[]
+  userPermissions   UserPermission[]
+  
+  // Audit Trail
+  auditLogs         AuditLog[]
+  
+  // Data Access Logs
+  dataAccessLogs    DataAccessLog[]
+  
+  @@map("users")
+}
+
+// Role-Based Access Control
+model Role {
+  id                String             @id @default(cuid())
+  name              String             @unique
+  description       String?
+  level             Int                // 1=Lowest, 10=Highest
+  isSystemRole      Boolean            @default(false)
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  
+  // Relations
+  userRoles         UserRole[]
+  rolePermissions   RolePermission[]
+  
+  @@map("roles")
+}
+
+model Permission {
+  id                String             @id @default(cuid())
+  name              String             @unique
+  resource          String             // e.g., "fund_data", "investor_info"
+  action            String             // e.g., "read", "write", "delete"
+  dataClassification String           // "public", "internal", "confidential", "restricted"
+  description       String?
+  createdAt         DateTime           @default(now())
+  
+  // Relations
+  rolePermissions   RolePermission[]
+  userPermissions   UserPermission[]
+  
+  @@unique([resource, action, dataClassification])
+  @@map("permissions")
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  grantedBy String
+  grantedAt DateTime @default(now())
+  expiresAt DateTime?
+  isActive  Boolean  @default(true)
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime   @default(now())
+  
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserPermission {
+  id           String     @id @default(cuid())
+  userId       String
+  permissionId String
+  grantedBy    String
+  grantedAt    DateTime   @default(now())
+  expiresAt    DateTime?
+  isActive     Boolean    @default(true)
+  
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, permissionId])
+  @@map("user_permissions")
+}
+
+// Sensitive Data Models
+model Fund {
+  id                String             @id @default(cuid())
+  fundCode          String             @unique
+  fundName          String
+  fundType          String
+  managementFee     Decimal            @db.Decimal(5,4) // Encrypted
+  performanceFee    Decimal?           @db.Decimal(5,4) // Encrypted
+  totalAssets       Decimal            @db.Decimal(20,2) // Encrypted
+  navPerUnit        Decimal            @db.Decimal(10,4) // Encrypted
+  
+  // Data Classification
+  dataClassification String            @default("confidential")
+  
+  // Relations
+  investors         FundInvestor[]
+  transactions      Transaction[]
+  reports           FundReport[]
+  
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  
+  @@map("funds")
+}
+
+model Investor {
+  id                String             @id @default(cuid())
+  investorCode      String             @unique
+  
+  // Personal Data (Encrypted)
+  personalInfo      Json               // Encrypted JSON blob
+  contactInfo       Json               // Encrypted JSON blob
+  financialInfo     Json               // Encrypted JSON blob
+  
+  // KYC Data
+  kycStatus         String
+  kycCompletedAt    DateTime?
+  riskProfile       String
+  
+  // Data Classification
+  dataClassification String            @default("restricted")
+  
+  // Relations
+  funds             FundInvestor[]
+  transactions      Transaction[]
+  
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  
+  @@map("investors")
+}
+
+model FundInvestor {
+  id                String             @id @default(cuid())
+  fundId            String
+  investorId        String
+  units             Decimal            @db.Decimal(20,6)
+  investmentAmount  Decimal            @db.Decimal(20,2) // Encrypted
+  joinDate          DateTime
+  
+  fund              Fund               @relation(fields: [fundId], references: [id])
+  investor          Investor           @relation(fields: [investorId], references: [id])
+  
+  @@unique([fundId, investorId])
+  @@map("fund_investors")
+}
+
+model Transaction {
+  id                String             @id @default(cuid())
+  transactionCode   String             @unique
+  fundId            String
+  investorId        String
+  transactionType   String             // "purchase", "redemption", "dividend"
+  amount            Decimal            @db.Decimal(20,2) // Encrypted
+  units             Decimal            @db.Decimal(20,6)
+  navPrice          Decimal            @db.Decimal(10,4)
+  fees              Decimal            @db.Decimal(20,2) // Encrypted
+  transactionDate   DateTime
+  settlementDate    DateTime
+  status            String
+  
+  // Data Classification
+  dataClassification String            @default("confidential")
+  
+  fund              Fund               @relation(fields: [fundId], references: [id])
+  investor          Investor           @relation(fields: [investorId], references: [id])
+  
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  
+  @@map("transactions")
+}
+
+// Audit & Logging
+model AuditLog {
+  id                String             @id @default(cuid())
+  userId            String
+  action            String
+  resource          String
+  resourceId        String?
+  oldValues         Json?
+  newValues         Json?
+  ipAddress         String
+  userAgent         String
+  timestamp         DateTime           @default(now())
+  
+  user              User               @relation(fields: [userId], references: [id])
+  
+  @@map("audit_logs")
+}
+
+model DataAccessLog {
+  id                String             @id @default(cuid())
+  userId            String
+  resource          String
+  resourceId        String
+  dataClassification String
+  accessType        String             // "read", "export", "print"
+  ipAddress         String
+  timestamp         DateTime           @default(now())
+  
+  user              User               @relation(fields: [userId], references: [id])
+  
+  @@map("data_access_logs")
+}
+
+model FundReport {
+  id                String             @id @default(cuid())
+  fundId            String
+  reportType        String
+  reportData        Json               // Encrypted sensitive data
+  generatedAt       DateTime
+  generatedBy       String
+  
+  // Data Classification
+  dataClassification String            @default("confidential")
+  
+  fund              Fund               @relation(fields: [fundId], references: [id])
+  
+  @@map("fund_reports")
 }

@@ -10,6 +10,11 @@ import { Router } from 'express';
 const router = Router();
 
 /**
+ * Routes
+ */
+import authRoutes from './auth';
+
+/**
  * Root route
  */
 
@@ -22,5 +27,7 @@ router.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+router.use('/auth', authRoutes);
 
 export default router;
