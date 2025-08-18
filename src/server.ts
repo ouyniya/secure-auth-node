@@ -20,6 +20,11 @@ import helmet from 'helmet';
 import limiter from './lib/express-rate-limits';
 
 /**
+ * Router
+ */
+import v1Route from './routes/v1';
+
+/**
  * Types
  */
 import type { CorsOptions } from 'cors';
@@ -78,19 +83,8 @@ app.use(helmet());
 // Apply rate limiting middleware to prevent excessive requests and enhance security
 app.use(limiter);
 
-(async () => {
-  try {
-    app.get('/', (req, res) => {
-      res.json({ message: 'Hello Secure World!' });
-    });
-  } catch (error) {
-    console.log(`Failed to start the server`, error);
-
-    if (config.NODE_ENV === 'production') {
-      process.exit(1);
-    }
-  }
-})();
+// Routes
+app.use('/api/v1/', v1Route);
 
 // export app for unit testing
 export default app;
