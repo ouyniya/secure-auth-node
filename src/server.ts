@@ -8,16 +8,17 @@
  */
 
 import express from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import helmet from 'helmet';
 
 /**
  * Custom modules
  */
-
-import limiter from './lib/express-rate-limits';
+import config from './config/index';
+import {
+  authRateLimit,
+  generalRateLimit,
+} from './middlewares/security-rate-limits';
 import { logger } from './lib/winston';
 
 /**
@@ -29,6 +30,8 @@ import v1Route from './routes/v1';
  * Types
  */
 import type { CorsOptions } from 'cors';
+import { securityHeaders } from './middlewares/security-headers';
+import { sanitizeRequest } from './middlewares/security-sanitization';
 
 /**
  * Express app initial
@@ -38,13 +41,12 @@ const app = express();
 // Remove header X-Powered-By
 app.disable('x-powered-by');
 
-dotenv.config(); // Load .env file variables
+// Trust proxy for proper IP detection
+app.set('trust proxy', 1);
 
-const config = {
-  PORT: process.env.PORT ?? 3000,
-  NODE_ENV: process.env.NODE_ENV,
-  WHITELIST_ORIGINS: ['https://nysdev.com'],
-};
+// Security middleware
+app.use(securityHeaders);
+app.use(sanitizeRequest);
 
 // Configure CORS options
 const corsOptions: CorsOptions = {
@@ -64,28 +66,36 @@ const corsOptions: CorsOptions = {
       logger.warn(`CORS Error: ${origin} is not allowed by CORS`);
     }
   },
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
 // Apply CORS
 app.use(cors(corsOptions));
 
 // Enable JSON request body parsing
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Enable URL-encoded request body parsing with extended mode
 // `extended: true` allows rich objects and arrays via querystring library
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(cookieParser());
 
-// Use Helmet to enhance security by setting various HTTP headers
-app.use(helmet());
-
 // Apply rate limiting middleware to prevent excessive requests and enhance security
-app.use(limiter);
+app.use(`${config.ROUTE_VERSION}/auth`, authRateLimit);
+app.use(`${config.ROUTE_VERSION}`, generalRateLimit);
 
-// Routes
-app.use('/api/v1/', v1Route);
+// API routes
+app.use(`${config.ROUTE_VERSION}`, v1Route);
+app.use(`/api/v1`, v1Route);
+
+// Error handling middleware
+
+// 404 handler วาง หลังทุก route และ middleware
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
 
 // export app for unit testing
 export default app;
