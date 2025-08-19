@@ -15,246 +15,344 @@ datasource db {
 
 // Core User Management
 model User {
-  id                String             @id @default(cuid())
-  email             String             @unique
-  username          String             @unique
-  hashedPassword    String
-  isActive          Boolean            @default(true)
-  lastLogin         DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  
+  id             String    @id @default(cuid())
+  email          String    @unique @db.VarChar(255)
+  username       String    @unique @db.VarChar(255)
+  fullName       String    @db.VarChar(255)
+  hashedPassword String    @db.Text
+  isPrivileged   Boolean   @default(false)
+  isActive       Boolean   @default(true)
+  lastActivity   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Password policy tracking
+  passwordChangedAt DateTime          @default(now())
+  passwordHistory   PasswordHistory[]
+
+  // MFA settings
+  mfaEnabled  Boolean @default(false)
+  totpSecret  String? @db.Text
+  backupCodes String? @db.Text
+
+  // PKI Authentication
+  certificateDN String? @db.Text
+  publicKeyHash String? @db.Text
+
+  // Hardware token
+  hardwareTokenId String @unique @db.VarChar(255)
+
+  // Audit trail
+  loginAttempts LoginAttempt[]
+  sessions      UserSession[]
+  auditLogs     AuditLog[]
+
   // RBAC Relations
-  userRoles         UserRole[]
-  userPermissions   UserPermission[]
-  
-  // Audit Trail
-  auditLogs         AuditLog[]
-  
+  userRoles       UserRole[]
+  userPermissions UserPermission[]
+
   // Data Access Logs
-  dataAccessLogs    DataAccessLog[]
-  
+  dataAccessLogs DataAccessLog[]
+
   @@map("users")
+}
+
+model PasswordHistory {
+  id             String   @id @default(cuid())
+  userId         String
+  hashedPassword String   @db.Text
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_history")
+}
+
+model Device {
+  id              String    @id @default(cuid())
+  deviceId        String    @unique @db.VarChar(255)
+  deviceName      String    @db.VarChar(255)
+  deviceType      String    @db.VarChar(100)
+  fingerprint     String    @db.Text
+  certificateHash String?   @db.Text
+  isActive        Boolean   @default(true)
+  lastSeen        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions  UserSession[]
+  auditLogs AuditLog[]
+
+  @@map("devices")
+}
+
+model UserSession {
+  id           String   @id @default(uuid())
+  userId       String
+  deviceId     String?
+  sessionToken String   @unique
+  refreshToken String   @unique
+  ipAddress    String   @db.VarChar(45)
+  userAgent    String   @db.Text
+  isActive     Boolean  @default(true)
+  expiresAt    DateTime
+  lastActivity DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id])
+
+  @@map("user_sessions")
+}
+
+model LoginAttempt {
+  id            String   @id @default(uuid())
+  userId        String?
+  username      String   @db.VarChar(255)
+  ipAddress     String   @db.VarChar(45)
+  userAgent     String   @db.Text
+  success       Boolean
+  failureReason String?  @db.Text
+  mfaUsed       Boolean  @default(false)
+  deviceId      String?  @db.VarChar(255)
+  timestamp     DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("login_attempts")
+}
+
+model CertificateRevocation {
+  id           String   @id @default(cuid())
+  serialNumber String   @unique @db.VarChar(255)
+  issuerDN     String   @db.Text
+  revokedAt    DateTime @default(now())
+  reason       String?  @db.VarChar(255)
+
+  @@map("certificate_revocations")
 }
 
 // Role-Based Access Control
 model Role {
-  id                String             @id @default(cuid())
-  name              String             @unique
-  description       String?
-  level             Int                // 1=Lowest, 10=Highest
-  isSystemRole      Boolean            @default(false)
-  isActive          Boolean            @default(true)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String?
+  level        Int // 1=Lowest, 10=Highest
+  isSystemRole Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
   // Relations
-  userRoles         UserRole[]
-  rolePermissions   RolePermission[]
-  
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
   @@map("roles")
 }
 
 model Permission {
-  id                String             @id @default(cuid())
-  name              String             @unique
-  resource          String             // e.g., "fund_data", "investor_info"
-  action            String             // e.g., "read", "write", "delete"
-  dataClassification String           // "public", "internal", "confidential", "restricted"
-  description       String?
-  createdAt         DateTime           @default(now())
-  
+  id                 String   @id @default(cuid())
+  name               String   @unique
+  resource           String // e.g., "fund_data", "investor_info"
+  action             String // e.g., "read", "write", "delete"
+  dataClassification String // "public", "internal", "confidential", "restricted"
+  description        String?
+  createdAt          DateTime @default(now())
+
   // Relations
-  rolePermissions   RolePermission[]
-  userPermissions   UserPermission[]
-  
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+
   @@unique([resource, action, dataClassification])
   @@map("permissions")
 }
 
 model UserRole {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   roleId    String
   grantedBy String
-  grantedAt DateTime @default(now())
+  grantedAt DateTime  @default(now())
   expiresAt DateTime?
-  isActive  Boolean  @default(true)
-  
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  
+  isActive  Boolean   @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
   @@unique([userId, roleId])
   @@map("user_roles")
 }
 
 model RolePermission {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   roleId       String
   permissionId String
-  createdAt    DateTime   @default(now())
-  
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
   @@unique([roleId, permissionId])
   @@map("role_permissions")
 }
 
 model UserPermission {
-  id           String     @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
   permissionId String
   grantedBy    String
-  grantedAt    DateTime   @default(now())
+  grantedAt    DateTime  @default(now())
   expiresAt    DateTime?
-  isActive     Boolean    @default(true)
-  
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  
+  isActive     Boolean   @default(true)
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
   @@unique([userId, permissionId])
   @@map("user_permissions")
 }
 
 // Sensitive Data Models
 model Fund {
-  id                String             @id @default(cuid())
-  fundCode          String             @unique
-  fundName          String
-  fundType          String
-  managementFee     Decimal            @db.Decimal(5,4) // Encrypted
-  performanceFee    Decimal?           @db.Decimal(5,4) // Encrypted
-  totalAssets       Decimal            @db.Decimal(20,2) // Encrypted
-  navPerUnit        Decimal            @db.Decimal(10,4) // Encrypted
-  
+  id             String   @id @default(cuid())
+  fundCode       String   @unique
+  fundName       String
+  fundType       String
+  managementFee  Decimal  @db.Decimal(5, 4) // Encrypted
+  performanceFee Decimal? @db.Decimal(5, 4) // Encrypted
+  totalAssets    Decimal  @db.Decimal(20, 2) // Encrypted
+  navPerUnit     Decimal  @db.Decimal(10, 4) // Encrypted
+
   // Data Classification
-  dataClassification String            @default("confidential")
-  
+  dataClassification String @default("confidential")
+
   // Relations
-  investors         FundInvestor[]
-  transactions      Transaction[]
-  reports           FundReport[]
-  
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  
+  investors    FundInvestor[]
+  transactions Transaction[]
+  reports      FundReport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("funds")
 }
 
 model Investor {
-  id                String             @id @default(cuid())
-  investorCode      String             @unique
-  
+  id           String @id @default(cuid())
+  investorCode String @unique
+
   // Personal Data (Encrypted)
-  personalInfo      Json               // Encrypted JSON blob
-  contactInfo       Json               // Encrypted JSON blob
-  financialInfo     Json               // Encrypted JSON blob
-  
+  personalInfo  Json // Encrypted JSON blob
+  contactInfo   Json // Encrypted JSON blob
+  financialInfo Json // Encrypted JSON blob
+
   // KYC Data
-  kycStatus         String
-  kycCompletedAt    DateTime?
-  riskProfile       String
-  
+  kycStatus      String
+  kycCompletedAt DateTime?
+  riskProfile    String
+
   // Data Classification
-  dataClassification String            @default("restricted")
-  
+  dataClassification String @default("restricted")
+
   // Relations
-  funds             FundInvestor[]
-  transactions      Transaction[]
-  
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  
+  funds        FundInvestor[]
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("investors")
 }
 
 model FundInvestor {
-  id                String             @id @default(cuid())
-  fundId            String
-  investorId        String
-  units             Decimal            @db.Decimal(20,6)
-  investmentAmount  Decimal            @db.Decimal(20,2) // Encrypted
-  joinDate          DateTime
-  
-  fund              Fund               @relation(fields: [fundId], references: [id])
-  investor          Investor           @relation(fields: [investorId], references: [id])
-  
+  id               String   @id @default(cuid())
+  fundId           String
+  investorId       String
+  units            Decimal  @db.Decimal(20, 6)
+  investmentAmount Decimal  @db.Decimal(20, 2) // Encrypted
+  joinDate         DateTime
+
+  fund     Fund     @relation(fields: [fundId], references: [id])
+  investor Investor @relation(fields: [investorId], references: [id])
+
   @@unique([fundId, investorId])
   @@map("fund_investors")
 }
 
 model Transaction {
-  id                String             @id @default(cuid())
-  transactionCode   String             @unique
-  fundId            String
-  investorId        String
-  transactionType   String             // "purchase", "redemption", "dividend"
-  amount            Decimal            @db.Decimal(20,2) // Encrypted
-  units             Decimal            @db.Decimal(20,6)
-  navPrice          Decimal            @db.Decimal(10,4)
-  fees              Decimal            @db.Decimal(20,2) // Encrypted
-  transactionDate   DateTime
-  settlementDate    DateTime
-  status            String
-  
+  id              String   @id @default(cuid())
+  transactionCode String   @unique
+  fundId          String
+  investorId      String
+  transactionType String // "purchase", "redemption", "dividend"
+  amount          Decimal  @db.Decimal(20, 2) // Encrypted
+  units           Decimal  @db.Decimal(20, 6)
+  navPrice        Decimal  @db.Decimal(10, 4)
+  fees            Decimal  @db.Decimal(20, 2) // Encrypted
+  transactionDate DateTime
+  settlementDate  DateTime
+  status          String
+
   // Data Classification
-  dataClassification String            @default("confidential")
-  
-  fund              Fund               @relation(fields: [fundId], references: [id])
-  investor          Investor           @relation(fields: [investorId], references: [id])
-  
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  
+  dataClassification String @default("confidential")
+
+  fund     Fund     @relation(fields: [fundId], references: [id])
+  investor Investor @relation(fields: [investorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("transactions")
 }
 
 // Audit & Logging
 model AuditLog {
-  id                String             @id @default(cuid())
-  userId            String
-  action            String
-  resource          String
-  resourceId        String?
-  oldValues         Json?
-  newValues         Json?
-  ipAddress         String
-  userAgent         String
-  timestamp         DateTime           @default(now())
-  
-  user              User               @relation(fields: [userId], references: [id])
-  
+  id         String   @id @default(cuid())
+  userId     String
+  deviceId   String?
+  action     String   @db.VarChar(255)
+  resource   String   @db.VarChar(255)
+  resourceId String?
+  details    Json?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String   @db.VarChar(45)
+  userAgent  String   @db.Text
+  timestamp  DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  Device Device? @relation(fields: [deviceId], references: [id])
+
   @@map("audit_logs")
 }
 
 model DataAccessLog {
-  id                String             @id @default(cuid())
-  userId            String
-  resource          String
-  resourceId        String
+  id                 String   @id @default(cuid())
+  userId             String
+  resource           String
+  resourceId         String
   dataClassification String
-  accessType        String             // "read", "export", "print"
-  ipAddress         String
-  timestamp         DateTime           @default(now())
-  
-  user              User               @relation(fields: [userId], references: [id])
-  
+  accessType         String // "read", "export", "print"
+  ipAddress          String
+  timestamp          DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
   @@map("data_access_logs")
 }
 
 model FundReport {
-  id                String             @id @default(cuid())
-  fundId            String
-  reportType        String
-  reportData        Json               // Encrypted sensitive data
-  generatedAt       DateTime
-  generatedBy       String
-  
+  id          String   @id @default(cuid())
+  fundId      String
+  reportType  String
+  reportData  Json // Encrypted sensitive data
+  generatedAt DateTime
+  generatedBy String
+
   // Data Classification
-  dataClassification String            @default("confidential")
-  
-  fund              Fund               @relation(fields: [fundId], references: [id])
-  
+  dataClassification String @default("confidential")
+
+  fund Fund @relation(fields: [fundId], references: [id])
+
   @@map("fund_reports")
 }
