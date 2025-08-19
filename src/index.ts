@@ -1,3 +1,12 @@
+/**
+ * @copyright 2025 nysdev
+ * @license Apache-2.0
+ */
+
+/**
+ * Node Modules
+ */
+
 import app from './server';
 import config from './config/index';
 import prisma from './config/database';

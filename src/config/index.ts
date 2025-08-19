@@ -17,6 +17,13 @@ const config = {
   WHITELIST_ORIGINS: ['https://nysdev.com'],
   LOG_LEVEL: process.env.LOG_LEVEL ?? 'info',
   ROUTE_VERSION: process.env.ROUTE_VERSION,
+
+  // Password Policy
+  MIN_LENGTH: process.env.MIN_LENGTH,
+  MAX_LIFETIME_DAYS: process.env.MAX_LIFETIME_DAYS,
+  MIN_LIFETIME_DAYS: process.env.MIN_LIFETIME_DAYS,
+  HISTORY_COUNT: process.env.HISTORY_COUNT,
+  SALT_ROUNDS: process.env.SALT_ROUNDS,
 };
 
 export default config;
