@@ -7,7 +7,7 @@
  * Node Modules
  */
 
-import express from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
@@ -91,6 +91,19 @@ app.use(`${config.ROUTE_VERSION}`, v1Route);
 app.use(`/api/v1`, v1Route);
 
 // Error handling middleware
+app.use((error: any, req: Request, res: Response, next: NextFunction) => {
+  logger.error('Unhandled error:', error);
+
+  if (error.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON payload' });
+  }
+
+  if (error.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Payload too large' });
+  }
+
+  res.status(500).json({ error: 'Internal server error' });
+});
 
 // 404 handler วาง หลังทุก route และ middleware
 app.use((req, res) => {
