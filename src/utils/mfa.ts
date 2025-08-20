@@ -215,6 +215,9 @@ function verifyHotp(
   const currentCtr = timeCounter(ts, period);
   for (let w = -win; w <= win; w++) {
     const candidate = hotp(secret, currentCtr + BigInt(w), digits, algo);
+
+    console.log(`w=${w} candidate************* ${candidate}`);
+
     if (candidate === token) return true;
   }
   return false;
@@ -263,7 +266,7 @@ export class MFAService {
       digits?: number;
       period?: number;
     },
-  ): { secret: string; encryptedSecret: string; qrCodeUrl: string } {
+  ): { encryptedSecret: string; qrCodeUrl: string } {
     const issuer = options?.issuer ?? 'Financial Institution';
     const bytes = options?.bytes ?? 20; // 20 bytes (~160 bits) เป็นค่าแนะนำ
     const algo = options?.algorithm ?? DEFAULT_ALGO;
@@ -286,7 +289,6 @@ export class MFAService {
     });
 
     return {
-      secret: base32Secret, // ใช้ตอน setup (เช่นโชว์ QR ครั้งเดียว)
       encryptedSecret, // เก็บใน DB
       qrCodeUrl: otpauthUrl,
     };

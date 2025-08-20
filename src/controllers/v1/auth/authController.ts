@@ -11,7 +11,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../../../config/database';
 import { logger } from '../../../lib/winston';
 import { PasswordPolicy } from '../../../utils/passwordPolicy';
-import { AuthenticatedRequest, LoginRequest } from '../../../types/index';
+import { AuthenticatedRequest } from '../../../types/index';
 import { MFAService } from '../../../utils/mfa';
 import { CryptoUtils } from '../../../utils/crypto';
 
@@ -24,11 +24,15 @@ export class AuthController {
         username,
         password,
         totpCode,
-        deviceFingerprint,
+        // deviceFingerprint,
         rememberDevice,
       } = req.body;
-      const ipAddress = req.ip;
+      const ipAddress = req.ip || 'unknown';
       const userAgent = req.get('User-Agent') || '';
+      const deviceFingerprint = CryptoUtils.generateDeviceFingerprint(
+        userAgent,
+        ipAddress,
+      );
 
       // Find user
       const user = await prisma.user.findUnique({
@@ -96,7 +100,10 @@ export class AuthController {
           return res.status(403).json({ error: 'MFA not configured' });
         }
 
-        const validMFA = MFAService.verifyToken(user.totpSecret, totpCode);
+        // Decrypt the secret before verification
+        const decryptedSecret = CryptoUtils.decrypt(user.totpSecret);
+        const validMFA = MFAService.verifyToken(decryptedSecret, totpCode);
+
         if (!validMFA) {
           // Check backup codes
           if (user.backupCodes) {
@@ -162,7 +169,7 @@ export class AuthController {
       expiresAt.setHours(expiresAt.getHours() + 8);
 
       // Create session record
-      const session = await prisma.userSession.create({
+      await prisma.userSession.create({
         data: {
           userId: user.id,
           deviceId: device?.id,
@@ -186,6 +193,24 @@ export class AuthController {
           ...loginAttempt,
           success: true,
           mfaUsed: !!(user.isPrivileged || user.mfaEnabled),
+        },
+      });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          userId: user?.id,
+          deviceId: device!.id,
+          action: 'LOGIN_ATTEMPT',
+          resource: req.path,
+          details: {
+            method: req.method,
+            params: req.params,
+            query: req.query,
+            timestamp: new Date().toISOString(),
+          },
+          ipAddress: req.ip || 'unknown',
+          userAgent: req.get('User-Agent') || '',
         },
       });
 
@@ -240,7 +265,11 @@ export class AuthController {
     try {
       // TODO: validate input
 
-      const { currenPassword, newPassword } = req.body;
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Password is required' });
+      }
+
       const userId = req.user!.id;
 
       const user = await prisma.user.findUnique({
@@ -255,7 +284,7 @@ export class AuthController {
 
       // Verify current password
       const validCurrentPassword = await PasswordPolicy.verifyPassword(
-        currenPassword,
+        currentPassword,
         user.hashedPassword,
       );
       if (!validCurrentPassword) {
@@ -314,6 +343,323 @@ export class AuthController {
     } catch (error) {
       logger.error('Change password error:', error);
       res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async setupMFA(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.id;
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (user.mfaEnabled) {
+        return res.status(400).json({ error: 'MFA already enabled' });
+      }
+
+      // Generate MFA secret and QR code
+      const mfaSetup = MFAService.generateSecret(user.username);
+      const qrCode = await MFAService.generateQRCode(mfaSetup.qrCodeUrl);
+      const backupCodes = MFAService.generateBackupCodes();
+
+      // Store secret temporarily (not enabled until verified)
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          totpSecret: mfaSetup.encryptedSecret,
+        },
+      });
+
+      logger.info(`User ${user.username} initiated MFA setup`);
+
+      res.json({
+        secret: mfaSetup.encryptedSecret,
+        qrCode,
+        backupCodes,
+      });
+    } catch (error) {
+      logger.error('MFA setup error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async verifyMFA(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { totpCode } = req.body;
+      const userId = req.user!.id;
+
+      if (!totpCode || totpCode.length !== 6) {
+        return res.status(400).json({ error: 'Valid TOPT code required' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!user.totpSecret) {
+        return res.status(400).json({ error: 'MFA setup not initiated' });
+      }
+
+      // Decrypt the secret before verification
+      const decryptedSecret = CryptoUtils.decrypt(user.totpSecret);
+
+      console.log('*******decryptedSecret*****', decryptedSecret);
+
+      // Verify secret
+      const isValid = MFAService.verifyToken(decryptedSecret, totpCode);
+      if (!isValid) {
+        logger.error('*******decryptedSecret*****');
+        return res.status(400).json({ error: 'Invalid TOTP code' });
+      }
+
+      // Enable MFA and save backup codes
+      const backupCodes = MFAService.generateBackupCodes();
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          mfaEnabled: true,
+          backupCodes: JSON.stringify(backupCodes),
+        },
+      });
+
+      logger.info(`User ${user.username} enabled MFA`);
+
+      res.json({
+        message: 'MFA enabled successfully',
+        backupCodes,
+      });
+    } catch (error) {
+      logger.error('MFA verification error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async disableMFA(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { password, totpCode } = req.body;
+      const userId = req.user!.id;
+
+      if (!password || !totpCode) {
+        return res
+          .status(400)
+          .json({ error: 'Password and TOTP code required' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Verify password
+
+      if (user.totpSecret) {
+        // Decrypt the secret before verification
+        const decryptedSecret = CryptoUtils.decrypt(user.totpSecret);
+        const validMFA = MFAService.verifyToken(decryptedSecret, totpCode);
+
+        if (!validMFA) {
+          return res.status(400).json({ error: 'Invalid TOTP code' });
+        }
+      }
+
+      // Disable MFA
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          mfaEnabled: false,
+          totpSecret: null,
+          backupCodes: null,
+        },
+      });
+
+      logger.info(`User ${user.username} disabled MFA`);
+
+      res.json({ message: 'MFA disabled successfully' });
+    } catch (error) {
+      logger.error('MFA disable error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async refreshToken(req: Request, res: Response) {
+    try {
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        return res.status(401).json({ error: 'Refresh token required' });
+      }
+
+      const session = await prisma.userSession.findUnique({
+        where: { refreshToken },
+        include: { user: true },
+      });
+
+      if (!session || !session.isActive || session.expiresAt < new Date()) {
+        return res.status(401).json({ error: 'Invalid refresh token' });
+      }
+
+      // Generate new tokens
+      const newSessionToken = jwt.sign(
+        {
+          userId: session.user.id,
+          username: session.user.username,
+          isPrivileged: session.user.isPrivileged,
+        },
+        process.env.JWT_SECRET!,
+        { expiresIn: '8h' },
+      );
+
+      const newRefreshToken = CryptoUtils.generateSecureToken(64);
+      const newExpiresAt = new Date();
+      newExpiresAt.setHours(newExpiresAt.getHours() + 8);
+
+      // Update session
+      await prisma.userSession.update({
+        where: { id: session.id },
+        data: {
+          sessionToken: newSessionToken,
+          refreshToken: newRefreshToken,
+          expiresAt: newExpiresAt,
+          lastActivity: new Date(),
+        },
+      });
+
+      res.json({
+        token: newSessionToken,
+        refreshToken: newRefreshToken,
+      });
+    } catch (error) {
+      logger.error('Token refresh error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async pkiAuth(req: Request, res: Response) {
+    try {
+      const { certificate, deviceFingerprint } = req.body;
+
+      if (!certificate) {
+        return res.status(400).json({ error: 'Client certificate required' });
+      }
+
+      // Parse and validate certificate
+      const certInfo = CryptoUtils.parsePKICertificate(certificate);
+
+      // Check certificate revocation
+      const isRevoked = await prisma.certificateRevocation.findUnique({
+        where: { serialNumber: certInfo.serialNumber },
+      });
+
+      if (isRevoked) {
+        return res.status(401).json({ error: 'Certificate revoked' });
+      }
+
+      // Find user by certificate DN
+      const user = await prisma.user.findFirst({
+        where: {
+          certificateDN: certInfo.subject,
+          isActive: true,
+        },
+      });
+
+      if (!user) {
+        return res
+          .status(401)
+          .json({ error: 'Certificate not associated with any user' });
+      }
+
+      // Handle device if provided
+      let device = null;
+      if (deviceFingerprint) {
+        device = await prisma.device.findUnique({
+          where: { deviceId: deviceFingerprint },
+        });
+
+        device ??
+          (await prisma.device.create({
+            data: {
+              deviceId: deviceFingerprint,
+              deviceName: 'PKI Authenticated Device',
+              deviceType: 'certificate',
+              fingerprint: deviceFingerprint,
+              certificateHash: certInfo.fingerprint,
+            },
+          }));
+      }
+
+      // Create session
+      const sessionToken = jwt.sign(
+        {
+          userId: user.id,
+          username: user.username,
+          isPrivileged: user.isPrivileged,
+          authMethod: 'PKI',
+        },
+        process.env.JWT_SECRET!,
+        { expiresIn: '8h' },
+      );
+
+      const refreshToken = CryptoUtils.generateSecureToken(64);
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 8);
+
+      await prisma.userSession.create({
+        data: {
+          userId: user.id,
+          deviceId: device?.id,
+          sessionToken,
+          refreshToken,
+          ipAddress: req.ip || 'unknown',
+          userAgent: req.get('User-Agent') || '',
+          expiresAt,
+        },
+      });
+
+      // Log PKI authentication
+      await prisma.loginAttempt.create({
+        data: {
+          userId: user.id,
+          username: user.username,
+          ipAddress: req.ip || 'unknown',
+          userAgent: req.get('User-Agent') || '',
+          success: true,
+          deviceId: deviceFingerprint,
+        },
+      });
+
+      logger.info(`User ${user.username} authenticated via PKI certificate`);
+
+      res.json({
+        message: 'PKI authentication successful',
+        token: sessionToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          username: user.username,
+          fullName: user.fullName,
+          isPrivileged: user.isPrivileged,
+        },
+      });
+    } catch (error) {
+      logger.error('PKI authentication error:', error);
+      res.status(500).json({ error: 'PKI authentication failed' });
     }
   }
 }

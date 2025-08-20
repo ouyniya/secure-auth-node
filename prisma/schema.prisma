@@ -40,7 +40,7 @@ model User {
   publicKeyHash String? @db.Text
 
   // Hardware token
-  hardwareTokenId String @unique @db.VarChar(255)
+  hardwareTokenId String? @unique @db.VarChar(255)
 
   // Audit trail
   loginAttempts LoginAttempt[]
@@ -90,8 +90,8 @@ model UserSession {
   id           String   @id @default(uuid())
   userId       String
   deviceId     String?
-  sessionToken String   @unique
-  refreshToken String   @unique
+  sessionToken String   @unique @db.VarChar(512)
+  refreshToken String   @unique @db.VarChar(512)
   ipAddress    String   @db.VarChar(45)
   userAgent    String   @db.Text
   isActive     Boolean  @default(true)
@@ -311,7 +311,7 @@ model AuditLog {
   userId     String
   deviceId   String?
   action     String   @db.VarChar(255)
-  resource   String?   @db.VarChar(255)
+  resource   String?  @db.VarChar(255)
   resourceId String?
   details    Json?
   oldValues  Json?

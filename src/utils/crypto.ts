@@ -7,6 +7,7 @@
  * Node Modules
  */
 import crypto from 'crypto';
+import forge from 'node-forge';
 
 /**
  * CryptoUtils
@@ -18,7 +19,7 @@ import crypto from 'crypto';
  */
 export class CryptoUtils {
   private static readonly ALGORITHM = 'aes-256-gcm';
-  private static readonly ENC_KEY = Buffer.from(process.env.KEY!, 'hex'); // 32-byte key
+  private static readonly ENC_KEY = Buffer.from(process.env.ENC_KEY!, 'hex'); // 32-byte key
   private static readonly IV_LENGTH = 12; // 96-bit IV
   private static readonly TAG_LENGTH = 16; // 128-bit auth tag
 
@@ -96,5 +97,39 @@ export class CryptoUtils {
   ): string {
     const data = `${userAgent}|${ip}|${additionalData || ''}`;
     return this.hashSHA256(data);
+  }
+
+  static parsePKICertificate(certPem: string): any {
+    try {
+      const cert = forge.pki.certificateFromPem(certPem);
+      return {
+        subject: cert.subject.getField('CN')?.value || '',
+        issuer: cert.issuer.getField('CN')?.value || '',
+        serialNumber: cert.serialNumber,
+        validFrom: cert.validity.notBefore,
+        validTo: cert.validity.notAfter,
+        fingerprint: forge.md.sha256
+          .create()
+          .update(
+            forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes(),
+          )
+          .digest()
+          .toHex(),
+      };
+    } catch (error) {
+      throw new Error('Invalid certificate format');
+    }
+  }
+
+  static verifyCertificateChain(certPem: string, caCertPem: string): boolean {
+    try {
+      const cert = forge.pki.certificateFromPem(certPem);
+      const caCert = forge.pki.certificateFromPem(caCertPem);
+
+      // Verify certificate against CA
+      return caCert.verify(cert);
+    } catch (error) {
+      return false;
+    }
   }
 }
