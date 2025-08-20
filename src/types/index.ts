@@ -3,12 +3,14 @@
  * @license Apache-2.0
  */
 
+import { Request } from 'express';
+
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
     username: string;
     isPrivileged: boolean;
-    sessionId: boolean;
+    sessionId: string;
   };
   device?: {
     id: string;

@@ -127,6 +127,7 @@ export class PasswordPolicy {
     }
   }
 
+  // Check if password expired
   static isPasswordExpired(passwordChangedAt: Date): boolean {
     const now = new Date();
     const daysSinceChange =

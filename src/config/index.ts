@@ -17,6 +17,7 @@ const config = {
   WHITELIST_ORIGINS: ['https://nysdev.com'],
   LOG_LEVEL: process.env.LOG_LEVEL ?? 'info',
   ROUTE_VERSION: process.env.ROUTE_VERSION,
+  JWT_SECRET: process.env.JWT_SECRET,
 
   // Password Policy
   MIN_LENGTH: process.env.MIN_LENGTH,
