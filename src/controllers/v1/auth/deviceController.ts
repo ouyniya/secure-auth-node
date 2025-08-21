@@ -9,7 +9,7 @@
 import { Response } from 'express';
 import prisma from '../../../config/database';
 import { logger } from '../../../lib/winston';
-import { AuthenticatedRequest } from '../../../types';
+import { AuthenticatedRequest } from '../../../types/v1';
 
 export class DeviceController {
   static async registerDevice(req: AuthenticatedRequest, res: Response) {

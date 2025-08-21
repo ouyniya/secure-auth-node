@@ -18,7 +18,7 @@ import config from './config/index';
 import {
   authRateLimit,
   generalRateLimit,
-} from './middlewares/security-rate-limits';
+} from './middlewares/v1/security-rate-limits';
 import { logger } from './lib/winston';
 
 /**
@@ -30,8 +30,8 @@ import v1Route from './routes/v1';
  * Types
  */
 import type { CorsOptions } from 'cors';
-import { securityHeaders } from './middlewares/security-headers';
-import { sanitizeRequest } from './middlewares/security-sanitization';
+import { securityHeaders } from './middlewares/v1/security-headers';
+import { sanitizeRequest } from './middlewares/v1/security-sanitization';
 
 /**
  * Express app initial

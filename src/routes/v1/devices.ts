@@ -8,7 +8,7 @@
  */
 import express from 'express';
 import { DeviceController } from '../../controllers/v1/auth/deviceController';
-import { authenticateToken, requirePrivileged, auditLog } from '../../middlewares/auth';
+import { authenticateToken, requirePrivileged, auditLog } from '../../middlewares/v1/auth';
 
 const router = express.Router();
 

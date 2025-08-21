@@ -13,7 +13,8 @@ import { Router } from 'express';
  */
 import register from '../../controllers/v1/auth/register';
 import { AuthController } from '../../controllers/v1/auth/authController';
-import { auditLog, authenticateToken } from '../../middlewares/auth';
+import { auditLog, authenticateToken } from '../../middlewares/v1/auth';
+import { loginSchema, validateSchema } from '../../middlewares/v1/validation';
 
 /**
  * Middlewares
@@ -29,7 +30,7 @@ router.post('/register', register);
 
 router.post(
   '/login',
-  //   AuthController.loginValidation,
+  validateSchema({ body: loginSchema }),
   AuthController.login,
 );
 
@@ -43,7 +44,7 @@ router.post(
 router.post(
   '/change-password',
   authenticateToken,
-//   AuthController.changePasswordValidation,
+  //   AuthController.changePasswordValidation,
   auditLog('PASSWORD_CHANGE'),
   AuthController.changePassword,
 );

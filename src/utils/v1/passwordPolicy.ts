@@ -7,8 +7,8 @@
  * Node Modules
  */
 import bcrypt from 'bcryptjs';
-import prisma from '../config/database';
-import config from '../config/index';
+import prisma from '../../config/database';
+import config from '../../config/index';
 
 export class PasswordPolicy {
   static readonly MIN_LENGTH = config.MIN_LENGTH;

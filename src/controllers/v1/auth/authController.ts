@@ -10,10 +10,10 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../../../config/database';
 import { logger } from '../../../lib/winston';
-import { PasswordPolicy } from '../../../utils/passwordPolicy';
-import { AuthenticatedRequest } from '../../../types/index';
-import { MFAService } from '../../../utils/mfa';
-import { CryptoUtils } from '../../../utils/crypto';
+import { PasswordPolicy } from '../../../utils/v1/passwordPolicy';
+import { AuthenticatedRequest } from '../../../types/v1/index';
+import { MFAService } from '../../../utils/v1/mfa';
+import { CryptoUtils } from '../../../utils/v1/crypto';
 
 export class AuthController {
   static async login(req: Request, res: Response) {
@@ -24,7 +24,6 @@ export class AuthController {
         username,
         password,
         totpCode,
-        // deviceFingerprint,
         rememberDevice,
       } = req.body;
       const ipAddress = req.ip || 'unknown';
@@ -414,12 +413,9 @@ export class AuthController {
       // Decrypt the secret before verification
       const decryptedSecret = CryptoUtils.decrypt(user.totpSecret);
 
-      console.log('*******decryptedSecret*****', decryptedSecret);
-
       // Verify secret
       const isValid = MFAService.verifyToken(decryptedSecret, totpCode);
       if (!isValid) {
-        logger.error('*******decryptedSecret*****');
         return res.status(400).json({ error: 'Invalid TOTP code' });
       }
 

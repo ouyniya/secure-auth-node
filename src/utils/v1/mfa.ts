@@ -215,9 +215,6 @@ function verifyHotp(
   const currentCtr = timeCounter(ts, period);
   for (let w = -win; w <= win; w++) {
     const candidate = hotp(secret, currentCtr + BigInt(w), digits, algo);
-
-    console.log(`w=${w} candidate************* ${candidate}`);
-
     if (candidate === token) return true;
   }
   return false;

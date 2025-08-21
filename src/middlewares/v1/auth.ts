@@ -6,12 +6,12 @@
 /**
  * Node Modules
  */
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import prisma from '../config/database';
-import { logger } from '../lib/winston';
-import { AuthenticatedRequest } from '../types/index';
-import config from '../config/index';
+import prisma from '../../config/database';
+import { logger } from '../../lib/winston';
+import { AuthenticatedRequest } from '../../types/v1/index';
+import config from '../../config/index';
 
 export const authenticateToken = async (
   req: AuthenticatedRequest,
@@ -19,8 +19,7 @@ export const authenticateToken = async (
   next: NextFunction,
 ) => {
   try {
-    const authHeader = req.headers['authorization'] as string | undefined;
-    const token = authHeader && authHeader.split(' ')[1];
+    const token = req.headers['authorization']?.split(' ')[1];
 
     if (!token) {
       return res.status(401).json({ error: 'Access token required' });
