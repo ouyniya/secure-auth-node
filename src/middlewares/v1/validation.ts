@@ -65,6 +65,24 @@ export const loginSchema = z.object({
   rememberDevice: z.coerce.boolean().optional(),
 });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z
+    .string()
+    .min(8, { message: 'Password must be at least 8 characters' })
+    .max(128, { message: 'Password must not exceed 128 characters' }),
+  newPassword: z
+    .string()
+    .min(8, { message: 'Password must be at least 8 characters' })
+    .max(128, { message: 'Password must not exceed 128 characters' }),
+});
+
+export const verifyMFASchema = z.object({
+  totpCode: z
+    .string()
+    .regex(/^\d+$/, { message: 'TOTP Code must be a positive integer' })
+    .transform(Number),
+});
+
 /**
  * Validation Middlewares
  */

@@ -11,10 +11,15 @@ import { Router } from 'express';
 /**
  * Controllers
  */
-import register from '../../controllers/v1/auth/register';
 import { AuthController } from '../../controllers/v1/auth/authController';
 import { auditLog, authenticateToken } from '../../middlewares/v1/auth';
-import { loginSchema, validateSchema } from '../../middlewares/v1/validation';
+import {
+  changePasswordSchema,
+  loginSchema,
+  registerSchema,
+  validateSchema,
+  verifyMFASchema,
+} from '../../middlewares/v1/validation';
 
 /**
  * Middlewares
@@ -26,7 +31,11 @@ import { loginSchema, validateSchema } from '../../middlewares/v1/validation';
 
 const router = Router();
 
-router.post('/register', register);
+router.post(
+  '/register',
+  validateSchema({ body: registerSchema }),
+  AuthController.register,
+);
 
 router.post(
   '/login',
@@ -44,7 +53,7 @@ router.post(
 router.post(
   '/change-password',
   authenticateToken,
-  //   AuthController.changePasswordValidation,
+  validateSchema({ body: changePasswordSchema }),
   auditLog('PASSWORD_CHANGE'),
   AuthController.changePassword,
 );
@@ -59,6 +68,7 @@ router.post(
 router.post(
   '/verify-mfa',
   authenticateToken,
+  validateSchema({ body: verifyMFASchema }),
   auditLog('MFA_VERIFY'),
   AuthController.verifyMFA,
 );

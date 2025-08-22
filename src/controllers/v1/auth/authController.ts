@@ -14,171 +14,364 @@ import { PasswordPolicy } from '../../../utils/v1/passwordPolicy';
 import { AuthenticatedRequest } from '../../../types/v1/index';
 import { MFAService } from '../../../utils/v1/mfa';
 import { CryptoUtils } from '../../../utils/v1/crypto';
+import config from '../../../config';
 
 export class AuthController {
-  static async login(req: Request, res: Response) {
-    try {
-      // TODO: validate input
+  private static getLoginContext(req: Request) {
+    const ipAddress = req.ip || 'unknown';
+    const userAgent = req.get('User-Agent') || '';
+    const deviceFingerprint = CryptoUtils.generateDeviceFingerprint(
+      userAgent,
+      ipAddress,
+    );
 
-      const {
+    return { ipAddress, userAgent, deviceFingerprint };
+  }
+
+  private static async findAndValidateUser(username: string) {
+    const user = await prisma.user.findUnique({
+      where: { username },
+      include: { passwordHistory: true },
+    });
+    return user?.isActive ? user : null;
+  }
+
+  private static async logFailedLogin(
+    username: string,
+    ipAddress: string,
+    userAgent: string,
+    deviceFingerprint: string,
+    failureReason: string,
+  ) {
+    await prisma.loginAttempt.create({
+      data: {
+        userId: undefined,
         username,
-        password,
-        totpCode,
-        rememberDevice,
-      } = req.body;
-      const ipAddress = req.ip || 'unknown';
-      const userAgent = req.get('User-Agent') || '';
-      const deviceFingerprint = CryptoUtils.generateDeviceFingerprint(
-        userAgent,
         ipAddress,
-      );
-
-      // Find user
-      const user = await prisma.user.findUnique({
-        where: { username },
-        include: { passwordHistory: true },
-      });
-
-      // Log Login attempt
-      const loginAttempt = {
-        userId: user?.id!, // required
-        username,
-        ipAddress: ipAddress || 'unknown',
         userAgent,
         success: false,
         deviceId: deviceFingerprint,
+        failureReason,
+      },
+    });
+  }
+
+  private static async verifyCredentials(
+    user: any,
+    password: string,
+    totpCode: string,
+  ) {
+    // Verify password
+    const validPassword = await PasswordPolicy.verifyPassword(
+      password,
+      user.hashedPassword,
+    );
+    if (!validPassword) {
+      return {
+        success: false,
+        status: 401,
+        reason: 'Invalid password',
+        data: { error: 'Invalid credentials' },
       };
+    }
 
-      if (!user || !user.isActive) {
-        await prisma.loginAttempt.create({
-          data: {
-            ...loginAttempt,
-            failureReason: 'User not found or inactive',
-          },
-        });
-        return res.status(401).json({ error: 'Invalid credentials' });
+    // Check password expiry
+    if (PasswordPolicy.isPasswordExpired(user.passwordChangedAt)) {
+      return {
+        success: false,
+        status: 403,
+        reason: 'Password expired',
+        data: { error: 'Password expired', requirePasswordChange: true },
+      };
+    }
+
+    // MFA verification
+    if (user.isPrivileged || user.mfaEnabled) {
+      if (!totpCode) {
+        return {
+          success: false,
+          status: 403,
+          reason: 'MFA required',
+          data: { error: 'MFA code required', requireMFA: true },
+        };
+      }
+      if (!user.totpSecret) {
+        return {
+          success: false,
+          status: 403,
+          reason: 'MFA not configured',
+          data: { error: 'MFA not configured' },
+        };
       }
 
-      // Verify password
-      const validPassword = await PasswordPolicy.verifyPassword(
-        password,
-        user.hashedPassword,
-      );
-      if (!validPassword) {
-        await prisma.loginAttempt.create({
-          data: { ...loginAttempt, failureReason: 'Invalid password' },
-        });
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
+      const decryptedSecret = CryptoUtils.decrypt(user.totpSecret);
+      const validMFA = MFAService.verifyToken(decryptedSecret, totpCode);
 
-      // Check password expiry
-      if (PasswordPolicy.isPasswordExpired(user.passwordChangedAt)) {
-        await prisma.loginAttempt.create({
-          data: { ...loginAttempt, failureReason: 'Password expired' },
-        });
-        return res
-          .status(403)
-          .json({ error: 'Password expired', requirePasswordChange: true });
-      }
-
-      // MFA verification for privileged accounts
-      if (user.isPrivileged || user.mfaEnabled) {
-        if (!totpCode) {
-          await prisma.loginAttempt.create({
-            data: {
-              ...loginAttempt,
-              failureReason: 'MFA required',
-            },
+      if (!validMFA) {
+        const backupResult = user.backupCodes
+          ? MFAService.verifyBackupCode(user.backupCodes, totpCode)
+          : { valid: false };
+        if (backupResult.valid && 'remainingCodes' in backupResult) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { backupCodes: backupResult.remainingCodes },
           });
-          return res
-            .status(403)
-            .json({ error: 'MFA code required', requireMFA: true });
-        }
-
-        if (!user.totpSecret) {
-          return res.status(403).json({ error: 'MFA not configured' });
-        }
-
-        // Decrypt the secret before verification
-        const decryptedSecret = CryptoUtils.decrypt(user.totpSecret);
-        const validMFA = MFAService.verifyToken(decryptedSecret, totpCode);
-
-        if (!validMFA) {
-          // Check backup codes
-          if (user.backupCodes) {
-            const backupResult = MFAService.verifyBackupCode(
-              user.backupCodes,
-              totpCode,
-            );
-            if (!backupResult.valid) {
-              await prisma.loginAttempt.create({
-                data: { ...loginAttempt, failureReason: 'Invalid MFA code' },
-              });
-              return res.status(401).json({ error: 'Invalid MFA code' });
-            }
-            // Update remaining backup codes
-            await prisma.user.update({
-              where: { id: user.id },
-              data: { backupCodes: backupResult.remainingCodes },
-            });
-          } else {
-            await prisma.loginAttempt.create({
-              data: { ...loginAttempt, failureReason: 'Invalid MFA code' },
-            });
-            return res.status(401).json({ error: 'Invalid MFA code' });
-          }
+        } else {
+          return {
+            success: false,
+            status: 401,
+            reason: 'Invalid MFA code',
+            data: { error: 'Invalid MFA code' },
+          };
         }
       }
+    }
 
-      // Handle device registration/verification
-      let device = await prisma.device.findUnique({
-        where: { deviceId: deviceFingerprint },
+    return { success: true };
+  }
+
+  private static async handleDevice(
+    deviceFingerprint: string,
+    userAgent: string,
+    ipAddress: string,
+    rememberDevice: boolean,
+  ) {
+    let device = await prisma.device.findUnique({
+      where: { deviceId: deviceFingerprint },
+    });
+
+    // No device yet and want to remember the device
+    if (!device && rememberDevice) {
+      device = await prisma.device.create({
+        data: {
+          deviceId: deviceFingerprint,
+          deviceName: `${userAgent.split(' ')[0]} Device`,
+          deviceType: 'web',
+          fingerprint: deviceFingerprint,
+          lastSeen: new Date(),
+        },
+      });
+    } else if (device) {
+      await prisma.device.update({
+        where: { id: device.id },
+        data: { lastSeen: new Date() },
+      });
+    }
+
+    return device;
+  }
+
+  private static createSessionTokens(user: any) {
+    const sessionToken = jwt.sign(
+      {
+        userId: user.id,
+        username: user.username,
+        isPrivileged: user.isPrivileged,
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn: '8h' },
+    );
+
+    const refreshToken = CryptoUtils.generateSecureToken(64);
+    return { sessionToken, refreshToken };
+  }
+
+  private static async createSessionRecord(
+    user: any,
+    device: any,
+    sessionToken: string,
+    refreshToken: string,
+    ipAddress: string,
+    userAgent: string,
+  ) {
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 8);
+    await prisma.userSession.create({
+      data: {
+        userId: user.id,
+        deviceId: device?.id,
+        sessionToken,
+        refreshToken,
+        ipAddress: ipAddress ?? 'unknown',
+        userAgent,
+        expiresAt,
+      },
+    });
+  }
+
+  private static async logSuccessfulLogin(
+    user: any,
+    ipAddress: string,
+    userAgent: string,
+    deviceFingerprint: string,
+  ) {
+    await prisma.loginAttempt.create({
+      data: {
+        userId: user.id,
+        username: user.username,
+        ipAddress,
+        userAgent,
+        success: true,
+        deviceId: deviceFingerprint,
+        mfaUsed: !!(user.isPrivileged || user.mfaEnabled),
+      },
+    });
+  }
+
+  private static createAndLogAudit(
+    user: any,
+    device: any,
+    action: string,
+    req: Request,
+  ) {
+    // Audit log
+    return prisma.auditLog.create({
+      data: {
+        userId: user?.id,
+        deviceId: device!.id,
+        action: action,
+        resource: req.path,
+        details: {
+          method: req.method,
+          params: req.params,
+          query: req.query,
+          timestamp: new Date().toISOString(),
+        },
+        ipAddress: req.ip || 'unknown',
+        userAgent: req.get('User-Agent') || '',
+      },
+    });
+  }
+
+  //////// Main function ////////
+
+  static async register(req: Request, res: Response) {
+    try {
+      const { email, username, fullName, password } = req.body;
+      const { ipAddress, userAgent, deviceFingerprint } =
+        AuthController.getLoginContext(req);
+
+      const isExist = await prisma.user.findFirst({
+        where: {
+          OR: [{ email }, { username }],
+        },
       });
 
-      if (!device && rememberDevice) {
-        device = await prisma.device.create({
-          data: {
-            deviceId: deviceFingerprint,
-            deviceName: `${userAgent.split(' ')[0]} Device`,
-            deviceType: 'web',
-            fingerprint: deviceFingerprint,
-            lastSeen: new Date(),
-          },
-        });
-      } else if (device) {
-        await prisma.device.update({
-          where: { id: device.id },
-          data: { lastSeen: new Date() },
-        });
+      // Check duplicate user
+      if (isExist) {
+        return res.status(400).json({ error: 'User already exists' });
       }
 
-      // Create session tokens
-      const sessionToken = jwt.sign(
-        {
-          userId: user.id,
-          username: user.username,
-          isPrivileged: user.isPrivileged,
+      // Validate new password complexity
+      const complexityErrors = PasswordPolicy.validateComplexity(
+        password,
+        username,
+        fullName,
+      );
+      if (complexityErrors.length > 0) {
+        return res.status(400).json({ errors: complexityErrors });
+      }
+
+      // Hash new password and update
+      const hashedPassword = await PasswordPolicy.hashedPassword(password);
+
+      // Insert into database
+      const user = await prisma.user.create({
+        data: {
+          email,
+          username,
+          fullName,
+          hashedPassword,
         },
-        process.env.JWT_SECRET!,
-        { expiresIn: '8h' },
+      });
+
+      // Handle device
+      const device = await AuthController.handleDevice(
+        deviceFingerprint,
+        userAgent,
+        ipAddress,
+        true,
       );
 
-      const refreshToken = CryptoUtils.generateSecureToken(64);
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 8);
+      // Log success
+      AuthController.createAndLogAudit(user, device, 'REGISTER', req);
 
-      // Create session record
-      await prisma.userSession.create({
-        data: {
-          userId: user.id,
-          deviceId: device?.id,
-          sessionToken,
-          refreshToken,
-          ipAddress: ipAddress ?? 'unknown',
-          userAgent,
-          expiresAt,
+      logger.info(`User ${username} logged in successfully from ${ipAddress}`);
+
+      // Send data to frontend
+      res.status(201).json({
+        message: 'Register successful',
+        user: {
+          id: user.id,
+          username: user.username,
+          fullName: user.fullName,
+          isPrivileged: user.isPrivileged,
+          mfaEnabled: user.mfaEnabled,
         },
       });
+    } catch (error) {
+      logger.error('Logout error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async login(req: Request, res: Response) {
+    try {
+      const { username, password, totpCode, rememberDevice } = req.body;
+      const { ipAddress, userAgent, deviceFingerprint } =
+        AuthController.getLoginContext(req);
+
+      // Find and validate user
+      const user = await AuthController.findAndValidateUser(username);
+
+      // Handle invalid user
+      if (!user) {
+        await AuthController.logFailedLogin(
+          username,
+          ipAddress,
+          userAgent,
+          deviceFingerprint,
+          'User not found or inactive',
+        );
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Verify credentials and handle failures
+      const validationResult = await AuthController.verifyCredentials(
+        user,
+        password,
+        totpCode,
+      );
+      if (!validationResult.success) {
+        await AuthController.logFailedLogin(
+          username,
+          ipAddress,
+          userAgent,
+          deviceFingerprint,
+          validationResult.reason!,
+        );
+        return res.status(validationResult.status!).json(validationResult.data);
+      }
+
+      // Handle device
+      const device = await AuthController.handleDevice(
+        deviceFingerprint,
+        userAgent,
+        ipAddress,
+        rememberDevice,
+      );
+
+      // Create session
+      const { sessionToken, refreshToken } =
+        AuthController.createSessionTokens(user);
+      await AuthController.createSessionRecord(
+        user,
+        device,
+        sessionToken,
+        refreshToken,
+        ipAddress,
+        userAgent,
+      );
 
       // Update user last activity
       await prisma.user.update({
@@ -186,39 +379,29 @@ export class AuthController {
         data: { lastActivity: new Date() },
       });
 
-      // Log successful login
-      await prisma.loginAttempt.create({
-        data: {
-          ...loginAttempt,
-          success: true,
-          mfaUsed: !!(user.isPrivileged || user.mfaEnabled),
-        },
-      });
-
-      // Audit log
-      await prisma.auditLog.create({
-        data: {
-          userId: user?.id,
-          deviceId: device!.id,
-          action: 'LOGIN_ATTEMPT',
-          resource: req.path,
-          details: {
-            method: req.method,
-            params: req.params,
-            query: req.query,
-            timestamp: new Date().toISOString(),
-          },
-          ipAddress: req.ip || 'unknown',
-          userAgent: req.get('User-Agent') || '',
-        },
-      });
+      // Log success
+      await AuthController.logSuccessfulLogin(
+        user,
+        ipAddress,
+        userAgent,
+        deviceFingerprint,
+      );
+      AuthController.createAndLogAudit(user, device, 'LOGIN_ATTEMPT', req);
 
       logger.info(`User ${username} logged in successfully from ${ipAddress}`);
 
-      res.json({
+      // Send refresh token to frontend
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true, // frontend JS access ไม่ได้
+        secure: config.NODE_ENV === 'production', // https
+        sameSite: 'none',
+        maxAge: 8 * 60 * 60 * 1000, // 8 hours
+      });
+
+      // Send data to frontend
+      res.status(201).json({
         message: 'Login successful',
         token: sessionToken,
-        refreshToken,
         user: {
           id: user.id,
           username: user.username,
@@ -262,8 +445,6 @@ export class AuthController {
 
   static async changePassword(req: AuthenticatedRequest, res: Response) {
     try {
-      // TODO: validate input
-
       const { currentPassword, newPassword } = req.body;
       if (!currentPassword || !newPassword) {
         return res.status(400).json({ error: 'Password is required' });

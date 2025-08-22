@@ -117,6 +117,7 @@ export class CryptoUtils {
           .toHex(),
       };
     } catch (error) {
+      console.log('PKI Certificate Error: ', error);
       throw new Error('Invalid certificate format');
     }
   }
@@ -129,6 +130,7 @@ export class CryptoUtils {
       // Verify certificate against CA
       return caCert.verify(cert);
     } catch (error) {
+      console.log('PKI Certificate error: ', error);
       return false;
     }
   }
