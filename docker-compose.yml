@@ -29,8 +29,17 @@ services:
     container_name: financial_auth_app
     environment:
       NODE_ENV: production
-      DATABASE_URL: mysql://finauth:${MYSQL_PASSWORD}@mysql:3306/financial_auth
+      DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
+      PORT: ${PORT}
+      ROUTE_VERSION: ${ROUTE_VERSION}
+      LOG_LEVEL: ${LOG_LEVEL}
+      MIN_LENGTH: ${MIN_LENGTH}
+      MAX_LIFETIME_DAYS: ${MAX_LIFETIME_DAYS}
+      MIN_LIFETIME_DAYS: ${MIN_LIFETIME_DAYS}
+      HISTORY_COUNT: ${HISTORY_COUNT}
+      SALT_ROUNDS: ${SALT_ROUNDS}
+      ENC_KEY: ${ENC_KEY}
     ports:
       - "3000:3000"
     depends_on:
