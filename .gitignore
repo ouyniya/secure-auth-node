@@ -33,3 +33,4 @@ Thumbs.db
 .scannerwork/
 
 /src/generated/prisma
+docker-compose.yml

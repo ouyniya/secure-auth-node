@@ -61,5 +61,9 @@
     "ts-node": "^10.9.2",
     "winston": "^3.17.0",
     "zod": "^4.0.17"
+  },
+  "overrides": {
+    "glob": "^9.0.0",
+    "inflight": "npm:lru-cache@^10.0.0"
   }
 }
