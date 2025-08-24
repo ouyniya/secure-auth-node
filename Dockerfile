@@ -38,6 +38,10 @@ COPY --from=builder --chown=nodeuser:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodeuser:nodejs /app/package.json ./
 COPY --from=builder --chown=nodeuser:nodejs /app/prisma ./prisma
 
+# Copy entrypoint script
+COPY --chown=nodeuser:nodejs entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+
 # Create logs directory
 RUN mkdir -p logs && chown nodeuser:nodejs logs
 

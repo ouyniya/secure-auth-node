@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: financial_auth_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: financial_auth
+      MYSQL_USER: finauth
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --ssl-mode=REQUIRED
+      --require-secure-transport=ON
+      --log-bin-trust-function-creators=1
+    networks:
+      - financial_network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: financial_auth_app
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://finauth:${MYSQL_PASSWORD}@mysql:3306/financial_auth
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mysql
+    volumes:
+      - ./logs:/app/logs
+      - ./ssl:/app/ssl:ro
+    networks:
+      - financial_network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  financial_network:
+    driver: bridge
