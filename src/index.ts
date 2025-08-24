@@ -23,10 +23,7 @@ import { logger } from './lib/winston';
     logger.info('Database connected successfully!');
 
     // Server is running ?
-    if (
-      process.env.JEST_WORKER_ID === undefined &&
-      process.env.NODE_ENV !== 'production'
-    ) {
+    if (process.env.JEST_WORKER_ID === undefined) {
       app.listen(config.PORT, () => {
         logger.info(`Server is running on port: ${config.PORT}`);
       });

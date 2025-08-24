@@ -6,3 +6,4 @@ npx prisma migrate deploy
 
 echo "Starting Node.js application..."
 exec node dist/index.js
+
