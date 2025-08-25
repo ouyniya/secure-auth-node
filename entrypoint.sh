@@ -12,6 +12,9 @@ done
 echo "Running Prisma migrations..."
 npx prisma migrate deploy
 
+echo "Running seed..."
+npx prisma db seed || true
+
 echo "Starting Node.js application..."
 exec node dist/index.js
 

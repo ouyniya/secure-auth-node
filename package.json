@@ -11,6 +11,9 @@
     "test:coverage": "jest --coverage",
     "scan": "docker-compose -f docker-compose-scan.yml run --rm sonar-scanner"
   },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",

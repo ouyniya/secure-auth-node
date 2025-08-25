@@ -47,5 +47,5 @@ RUN mkdir -p logs && chown nodeuser:nodejs logs
 
 USER nodeuser
 
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["dumb-init", "--", "./entrypoint.sh"]
+CMD []
