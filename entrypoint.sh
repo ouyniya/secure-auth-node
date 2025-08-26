@@ -9,9 +9,6 @@ do
   sleep 2
 done
 
-# Change ownership of the logs directory to the application user
-chown -R nodeuser:nodejs /app/logs
-
 echo "Running Prisma migrations..."
 npx prisma migrate deploy
 
