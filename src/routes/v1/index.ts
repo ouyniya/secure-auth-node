@@ -13,12 +13,15 @@ const router = Router();
  * Routes
  */
 import authRoutes from './auth';
+import { logger } from '../../lib/winston';
 
 /**
  * Root route
  */
 
 router.get('/', (req, res) => {
+  logger.info("Hello world", {service: "checkout"})
+  
   res.json({
     message: 'API is live',
     status: 'ok',

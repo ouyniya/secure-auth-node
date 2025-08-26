@@ -22,10 +22,52 @@ export const authenticateToken = async (
     const token = req.headers['authorization']?.split(' ')[1];
 
     if (!token) {
+      logger.warn('Missing token in request', {
+        path: req.originalUrl,
+        method: req.method,
+        ip: req.ip,
+      });
+
       return res.status(401).json({ error: 'Access token required' });
     }
 
-    const decoded = jwt.verify(token, config.JWT_SECRET!);
+    jwt.verify(token, config.JWT_SECRET!);
+
+    try {
+      jwt.verify(token, config.JWT_SECRET!);
+    } catch (error: any) {
+      // Normalize error
+      const errorDetails: Record<string, any> = {
+        path: req.originalUrl,
+        method: req.method,
+        ip: req.ip,
+        userId: req.user?.id || 'anonymous', // ถ้ามี decode JWT ได้แล้ว
+        sessionId: req.headers['x-session-id'] || undefined, // ถ้ามีระบบ session tracking
+        requestId: req.headers['x-request-id'] || undefined, // สำหรับ distributed tracing
+        token: '*****', // mask token
+      };
+
+      if (error.name === 'TokenExpiredError') {
+        logger.error('JWT verification failed: Token expired', {
+          ...errorDetails,
+          expiredAt: error.expiredAt,
+        });
+
+        return res.status(401).json({ error: 'Token expired' });
+      } else if (error.name === 'JsonWebTokenError') {
+        logger.error('JWT verification failed: Invalid token', {
+          ...errorDetails,
+          reason: error.message,
+        });
+        return res.status(401).json({ error: 'Invalid token' });
+      } else {
+        logger.error('JWT verification error (unexpected)', {
+          ...errorDetails,
+          reason: error.message,
+        });
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+    }
 
     // Verify session is still active
     const session = await prisma.userSession.findFirst({

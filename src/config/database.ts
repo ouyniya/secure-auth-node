@@ -9,6 +9,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../lib/winston';
+import { maskTokens } from '../utils/v1/markSensitive';
 
 const prisma = new PrismaClient({
   log: [
@@ -23,7 +24,7 @@ const prisma = new PrismaClient({
 prisma.$on('query', (e) => {
   logger.info('Database Query', {
     query: e.query,
-    params: e.params,
+    params: maskTokens(e.params),
     duration: e.duration,
     timestamp: e.timestamp,
   });
